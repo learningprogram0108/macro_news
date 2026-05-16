@@ -183,14 +183,11 @@ JSON 結構如下（注意：analysis 欄位段落間用 \\n\\n 分隔）：
       "impact_tags": [
         {"color": "red|green|amber|blue", "text": "持倉影響標籤（如：🔴 TLT 短期承壓）"}
       ],
-      "key_points": ["重點一（30字內）", "重點二", "重點三", "重點四"],
-      "articles": [
-        {"title_zh": "將原文標題翻成繁體中文", "summary_zh": "將原文摘要翻成繁體中文（100字內）"}
-      ]
+      "key_points": ["重點一（30字內）", "重點二", "重點三", "重點四"]
     },
-    "macro":    { "同上結構（含 articles 翻譯）": "" },
-    "fiscal":   { "同上結構（含 articles 翻譯）": "" },
-    "markets":  { "同上結構（含 articles 翻譯）": "" }
+    "macro":    { "title": "...", "snippet": "...", "analysis": "...", "impact_tags": [...], "key_points": [...] },
+    "fiscal":   { "title": "...", "snippet": "...", "analysis": "...", "impact_tags": [...], "key_points": [...] },
+    "markets":  { "title": "...", "snippet": "...", "analysis": "...", "impact_tags": [...], "key_points": [...] }
   },
   "synthesis": {
     "macro_theme": {
@@ -240,9 +237,7 @@ JSON 結構如下（注意：analysis 欄位段落間用 \\n\\n 分隔）：
 4. synthesis.watchlist 恰好 4 個事件
 5. topics[*].analysis 不得少於 350 字，段落間用 \\n\\n 分隔
 6. synthesis.tactical_guidance 中的 rationale 必須具體提及今日主線，不得寫教科書式通則
-7. topics[*].articles 的順序與數量必須與輸入新聞完全對應，不得增減
-8. articles[*].summary_zh 限 100 字以內，保留關鍵數據與人名
-9. 所有文字（含 articles 翻譯）使用繁體中文
+7. 所有文字使用繁體中文
 """
 
 USER_PROMPT_TEMPLATE = """\
@@ -319,6 +314,80 @@ def analyze_with_gemini(topic_news: dict[str, list], date: str, dcc_context: str
                 wait, err_str[:120],
             )
             time.sleep(wait)
+
+
+# ── 文章翻譯（獨立 Gemini 呼叫） ───────────────────────────────────────────────
+
+def _translate_articles_with_gemini(topic_news: dict[str, list]) -> dict[str, list]:
+    """
+    將四個主題的所有文章標題與摘要翻譯為繁體中文。
+    單次 Gemini 呼叫，輸入/輸出皆為 JSON 陣列，失敗時靜默降級（保留英文）。
+    """
+    items = []
+    for topic_key, arts in topic_news.items():
+        for i, art in enumerate(arts):
+            items.append({
+                "id": f"{topic_key}::{i}",
+                "t": art["title"],
+                "s": art["summary"][:250],
+            })
+
+    if not items:
+        return topic_news
+
+    prompt = (
+        "將以下每筆新聞的標題（t）與摘要（s）翻譯為繁體中文。\n"
+        "嚴格以 JSON 陣列回覆，格式：[{\"id\":\"...\",\"t\":\"繁中標題\",\"s\":\"繁中摘要（≤100字）\"}, ...]。\n"
+        "不得包含 Markdown、前言或任何說明文字。數字、百分比、股票代碼、人名、機構名直接保留或音譯。\n"
+        f"共 {len(items)} 筆，不得省略任何條目：\n"
+        + json.dumps(items, ensure_ascii=False)
+    )
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        _rate_limiter.acquire(estimated_tokens=len(items) * 150)
+        try:
+            client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=genai.types.GenerateContentConfig(
+                    max_output_tokens=8192,
+                    temperature=0.1,
+                ),
+            )
+            raw = response.text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            translated = {item["id"]: item for item in json.loads(raw.strip())}
+            break
+        except Exception as e:
+            is_last = attempt == max_retries - 1
+            err_str = str(e)
+            if is_last or ("503" not in err_str and "429" not in err_str):
+                logger.warning("文章翻譯失敗，降級使用英文原文：%s", err_str[:120])
+                return {
+                    topic: [{**a, "title_zh": a["title"], "summary_zh": a["summary"]} for a in arts]
+                    for topic, arts in topic_news.items()
+                }
+            wait = 60 if "429" in err_str else 30 * (2 ** attempt)
+            logger.warning("翻譯 Gemini 暫時不可用（attempt %d/%d），%ds 後重試", attempt + 1, max_retries, wait)
+            time.sleep(wait)
+
+    result: dict[str, list] = {}
+    for topic_key, arts in topic_news.items():
+        new_arts = []
+        for i, art in enumerate(arts):
+            tr = translated.get(f"{topic_key}::{i}", {})
+            new_arts.append({
+                **art,
+                "title_zh":   tr.get("t") or art["title"],
+                "summary_zh": tr.get("s") or art["summary"],
+            })
+        result[topic_key] = new_arts
+    return result
 
 
 # ── HTML report ────────────────────────────────────────────────────────────────
@@ -491,6 +560,11 @@ def main() -> None:
             send_error_notification("Alpha Vantage 抓取", Exception("所有主題均無資料，中止執行"))
             return
 
+        # Step 1.5: 翻譯文章標題與摘要為繁體中文（獨立 Gemini 呼叫，失敗時靜默降級）
+        topic_news = _translate_articles_with_gemini(topic_news)
+        logger.info("Article translation complete (total %d articles)",
+                    sum(len(v) for v in topic_news.values()))
+
         # Step 2: Gemini 一次性分析（Plan A）
         tw_time = datetime.now(timezone(timedelta(hours=8)))
         date_str = tw_time.strftime("%Y 年 %m 月 %d 日")
@@ -501,19 +575,11 @@ def main() -> None:
             send_error_notification("Gemini 分析", e)
             return
 
-        # Step 3: 將原始新聞文章合併進 report_data，並注入 Gemini 翻譯結果
+        # Step 3: 合併已翻譯文章與分析結果，預處理段落
         for key in TOPIC_CONFIG:
             topic = report_data.get("topics", {}).get(key, {})
-            raw_news = topic_news.get(key, [])
-            translations = topic.pop("articles", [])  # Gemini 輸出的翻譯陣列
-            for i, art in enumerate(raw_news):
-                if i < len(translations):
-                    art["title_zh"]   = translations[i].get("title_zh")   or art["title"]
-                    art["summary_zh"] = translations[i].get("summary_zh") or art["summary"]
-                else:
-                    art["title_zh"]   = art["title"]
-                    art["summary_zh"] = art["summary"]
-            topic["news"] = raw_news
+            topic.pop("articles", None)  # 移除分析呼叫可能殘留的欄位
+            topic["news"] = topic_news.get(key, [])  # 已含 title_zh / summary_zh
             topic["analysis_paragraphs"] = [
                 p.strip() for p in topic.get("analysis", "").split("\n\n") if p.strip()
             ]
