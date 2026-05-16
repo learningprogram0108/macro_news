@@ -30,10 +30,11 @@ GitHub Actions workflow_dispatch
         ▼
 Gemini 2.5 Flash API
    - 輸入：DCC-GARCH 量化結果 + 新聞文字
-   - 輸出：JSON 格式報告
+   - 輸出：JSON 格式報告（max_output_tokens=16384）
    - 包含主線判斷、情緒評分、13 個持倉戰術建議（數字有量化錨點）
+   - 503/429 錯誤自動 retry（最多 4 次，指數退避 30/60/120 秒）
         │
-        ├─► LINE Messaging API  → 濃縮摘要推播
+        ├─► LINE Messaging API  → 持倉分組完整分析推播
         └─► Jinja2 HTML 模板   → 互動式完整報告
                 │
                 ▼
@@ -60,23 +61,21 @@ Gemini 2.5 Flash API
 
 ### 量化資產配置分析（DCC-GARCH）
 
-每日執行前先對 VOO / TLT / GLD 進行兩階段量化估計：
+每日對 VOO / TLT / GLD 進行兩階段量化估計，結果注入 Gemini prompt：
 
-- **動態條件相關係數**：VOO↔TLT、VOO↔GLD、TLT↔GLD 的即時相關性（vs 近 30 日均值），判斷避險關係是否生效
-- **條件波動率（年化）**：各資產當前的 GARCH(1,1) 條件標準差
-- **HRP 配置**：Hierarchical Risk Parity（Lopez de Prado 2016）— 以階層聚類建立資產樹狀結構，遞迴二分分配風險，不需矩陣求逆、對估計誤差更穩健
-- **Risk Parity 配置**：三資產等風險貢獻配置（橋水 All Weather 概念）
-
-量化結果直接注入 Gemini prompt，讓 AI 的操作建議有具體百分比數字支撐。
+- **動態條件相關係數**：VOO↔TLT、VOO↔GLD、GLD↔TLT 即時相關性（vs 近 30 日均值），附趨勢箭頭與避險效果判讀
+- **條件波動率（年化）**：各資產當前 GARCH(1,1) 條件標準差
+- **HRP 配置**：Hierarchical Risk Parity — 階層聚類 + 遞迴二分，不需矩陣求逆，對估計誤差更穩健
+- **Risk Parity 配置**：等風險貢獻（ERC），每資產貢獻相同組合風險
 
 ### AI 總經分析
 
-- **今日宏觀主線**：流動性主導 / 基本面主導，附信心度百分比
-- **市場情緒評分**：1–10 分視覺化量表
+- **今日宏觀主線**：流動性主導 / 基本面主導，附信心度百分比與說明
+- **市場情緒評分**：1–10 分，附評分推理
 - **風險標籤**：自動標記當日主要風險事件
-- **13 個持倉戰術建議**：涵蓋核心股票、品質防禦、固定收益、實物資產（引用 DCC 量化數字）
-- **防禦觀察清單**：未來 3–5 日 4 個關鍵觸發事件
-- **三大核心主題**：含數據格、持倉連動分析
+- **13 個持倉戰術建議**：按群組分析，add/reduce 附完整 rationale，VOO/TLT/GLD 永遠顯示量化說明
+- **防禦觀察清單**：4 個關鍵觸發事件及持倉連動分析
+- **三大核心主題**：含數據格、持倉影響
 
 ### 持倉清單
 
@@ -86,6 +85,80 @@ Gemini 2.5 Flash API
 | 品質防禦 | QUAL、XLV、XLU、XLP、00713 |
 | 固定收益 | 00679B、00719B |
 | 實物資產 | 黃金(GLD)、PDBC、現金 |
+
+---
+
+## 量化模型公式
+
+### Stage 1：GARCH(1,1)
+
+對數報酬：$r_t = \ln(P_t / P_{t-1})$
+
+$$\sigma_t^2 = \omega + \alpha_G \cdot \varepsilon_{t-1}^2 + \beta_G \cdot \sigma_{t-1}^2$$
+
+標準化殘差：$z_t = \varepsilon_t / \sigma_t$
+
+年化波動率：$\sigma_{\text{annual}} = \sigma_T \times \sqrt{252}$
+
+### Stage 2：DCC(1,1)
+
+無條件相關矩陣：
+
+$$\bar{Q} = \frac{1}{T}\sum_{t=1}^{T} z_t z_t'$$
+
+動態偽相關矩陣：
+
+$$Q_t = (1 - \alpha - \beta)\bar{Q} + \alpha \cdot z_{t-1}z_{t-1}' + \beta \cdot Q_{t-1}$$
+
+標準化為相關矩陣：
+
+$$R_t = \operatorname{diag}(Q_t)^{-1/2} \cdot Q_t \cdot \operatorname{diag}(Q_t)^{-1/2}$$
+
+DCC log-likelihood（最大化估計 $\alpha, \beta$，約束 $\alpha>0,\ \beta>0,\ \alpha+\beta<1$）：
+
+$$\mathcal{L}(\alpha,\beta) = -\frac{1}{2}\sum_{t=1}^{T}\bigl[\ln|R_t| + z_t' R_t^{-1} z_t - z_t' z_t\bigr]$$
+
+年化動態共變異數矩陣：
+
+$$H_t = D_t \cdot R_t \cdot D_t \times 252, \quad D_t = \operatorname{diag}(\sigma_{1,t},\, \sigma_{2,t},\, \sigma_{3,t})$$
+
+### Hierarchical Risk Parity（HRP）
+
+**Step 1 — 距離矩陣**
+
+$$d_{ij} = \sqrt{\frac{1 - \rho_{ij}}{2}}$$
+
+其中 $\rho_{ij}$ 為 DCC 動態相關矩陣 $R_t$ 的元素。
+
+**Step 2 — 階層聚類（Single Linkage）**
+
+$$d_{\text{single}}(A, B) = \min_{i \in A,\, j \in B} d_{ij}$$
+
+輸出樹狀結構，將相似資產相鄰排列（Quasi-diagonalization）。
+
+**Step 3 — 遞迴二分配置**
+
+每個葉節點 $i$ 在子叢集 $C$ 中的逆變異數權重：
+
+$$\tilde{w}_i = \frac{1/\sigma_i^2}{\sum_{j \in C} 1/\sigma_j^2}$$
+
+子叢集 $C$ 的組合變異數：
+
+$$\tilde{V}_C = \tilde{w}_C' \cdot H_C \cdot \tilde{w}_C$$
+
+由樹根往下，每次將左右子叢集的配置比例設為：
+
+$$\alpha_L = 1 - \frac{\tilde{V}_L}{\tilde{V}_L + \tilde{V}_R}, \quad \alpha_R = \frac{\tilde{V}_L}{\tilde{V}_L + \tilde{V}_R}$$
+
+### Risk Parity（等風險貢獻）
+
+邊際風險貢獻：$\mathit{MRC}_i = (H_t\, w)_i$
+
+資產 $i$ 的風險貢獻：$\mathit{RC}_i = w_i \cdot \mathit{MRC}_i$
+
+最小化各資產風險貢獻偏離均等的程度：
+
+$$\min_w \sum_{i=1}^{n}\!\left(\mathit{RC}_i - \frac{w'H_t w}{n}\right)^{\!2} \quad \text{s.t.} \quad \sum_i w_i = 1,\; w_i > 0$$
 
 ---
 
@@ -149,8 +222,8 @@ npx wrangler secret put GITHUB_REPO    # 填入：learningprogram0108/macro_news
 
 ```
 macro_news/
-├── main.py                        # 主程式（DCC-GARCH → 抓取新聞 → Gemini 分析 → 推播）
-├── dcc_garch.py                   # DCC-GARCH(1,1) 量化引擎 + 投資組合最佳化
+├── main.py                        # 主程式（DCC-GARCH → 新聞抓取 → Gemini 分析 → 推播）
+├── dcc_garch.py                   # DCC-GARCH(1,1) 量化引擎 + HRP + Risk Parity
 ├── report_template.html           # Jinja2 互動式報告模板
 ├── requirements.txt
 ├── .gitignore
@@ -166,51 +239,66 @@ macro_news/
 
 ---
 
-## 報告範例
-
-報告發布於 GitHub Pages：
-
-```
-https://learningprogram0108.github.io/macro_news/reports/report_YYYYMMDD.html
-```
-
-LINE 每日推播格式：
+## LINE 推播格式
 
 ```
 📊 每日總經 AI 監控報告
 2026 年 05 月 17 日 台灣時間 07:00
 
-🧭 今日主線：基本面主導
-地緣政治衝突引發通膨擔憂，推升油價與殖利率
+🧭 今日主線：基本面主導（信心度 78%）
+聯準會鷹派言論壓制風險資產
+通膨數據超預期，市場重新定價降息時程
 
-📈 情緒評分：3/10 謹慎偏恐慌
+📈 情緒評分：4/10 謹慎偏悲觀
+市場對高利率持續性的擔憂升溫
 
-⚠️ 風險標籤：地緣政治風險 · 通膨壓力 · 利率上行風險
+⚠️ 風險標籤：利率風險 · 通膨壓力 · 美債供給壓力
 
-🎯 關鍵操作：
-• 黃金(GLD) 加碼
-• QQQ 減碼
+📐 量化配置分析
+• VOO↔TLT：-0.18 ↓ 下降（避險效果增強）
+• VOO↔GLD：+0.05 → 持平
+• GLD↔TLT：+0.14 → 持平
+• 波動率：VOO 15.3% | TLT 12.1% | GLD 13.8%
+• HRP：VOO 45% / TLT 29% / GLD 26%
+• Risk Parity：VOO 34% / TLT 34% / GLD 32%
+
+━━━━━━━━━━━━━━━
+🎯 持倉配置分析
+━━━━━━━━━━━━━━━
+
+📈【核心股票】
+⚪ 0050 維持
+🟡 VOO 觀察
+   └ DCC↔TLT -0.18 避險有效；HRP 建議 45%，高利率環境短期承壓
+🔴 QQQ 減碼
+   └ 科技股估值受壓，建議降低部位
+
+🛡️【品質防禦】
+⚪ QUAL 維持
+🟢 XLV 加碼
+   └ 防禦屬性在基本面主導環境下表現穩健
+⚪ XLU 維持
+⚪ XLP 維持
+⚪ 00713 維持
+
+🏦【固定收益】
+🟢 00679B 加碼
+   └ Risk Parity 建議 34%，殖利率高點支撐債券配置價值
+⚪ 00719B 維持
+
+🥇【實物資產】
+🟢 黃金(GLD) 加碼
+   └ HRP 建議 26%，GLD↔TLT +0.14，避險需求提升
+⚪ PDBC 觀察
+💵 現金 謹慎
 
 📋 完整報告：https://learningprogram0108.github.io/macro_news/reports/...
 ```
 
-DCC-GARCH 量化結果（注入 Gemini prompt 範例）：
+---
+
+## 報告網址
 
 ```
-【量化資產配置分析 — DCC-GARCH(1,1)】
-回溯 2 年日線（VOO / TLT / GLD），DCC α=0.0382 β=0.7532
-
-▌動態條件相關係數（今日估計 vs 近 30 日均值）
-• VOO ↔ TLT：-0.182（30日均：-0.201）→ 持平
-• VOO ↔ GLD：+0.051（30日均：+0.038）→ 持平
-• TLT ↔ GLD：+0.143（30日均：+0.127）→ 持平
-
-▌條件波動率（年化）
-• VOO：15.3%　TLT：12.1%　GLD：13.8%
-
-▌最佳化配置建議
-階層風險平價（HRP）：
-  VOO 45.2% / TLT 28.6% / GLD 26.2%
-等風險貢獻（Risk Parity）：
-  VOO 33.8% / TLT 34.2% / GLD 32.0%
+https://learningprogram0108.github.io/macro_news/reports/report_YYYYMMDD.html
 ```
