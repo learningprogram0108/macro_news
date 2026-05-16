@@ -114,13 +114,18 @@ def _format_av_time(time_str: str) -> str:
         return ""
 
 
-def fetch_alpha_vantage_news(api_key: str, topic: str, limit: int = 15) -> list[dict]:
+_MIN_RELEVANCE = 0.35   # 低於此分數的文章視為低相關，直接排除
+_ARTICLES_PER_TOPIC = 10  # 過濾後保留的篇數（品質優先而非數量）
+_AV_FETCH_LIMIT = 50      # 每次 API 請求的候選篇數
+
+
+def fetch_alpha_vantage_news(api_key: str, topic: str) -> list[dict]:
     url = "https://www.alphavantage.co/query"
     params = {
         "function": "NEWS_SENTIMENT",
         "topics": topic,
-        "limit": str(limit),
-        "sort": "LATEST",
+        "limit": str(_AV_FETCH_LIMIT),
+        "sort": "RELEVANCE",   # 按相關性排序，比 LATEST 品質更高
         "apikey": api_key,
     }
     resp = requests.get(url, params=params, timeout=20)
@@ -147,6 +152,20 @@ def fetch_alpha_vantage_news(api_key: str, topic: str, limit: int = 15) -> list[
         if key in seen:
             continue
         seen.add(key)
+
+        # 取得該文章對本主題的相關性分數
+        relevance = 0.0
+        for t in item.get("topics", []):
+            if t.get("topic") == topic:
+                try:
+                    relevance = float(t.get("relevance_score", 0))
+                except (ValueError, TypeError):
+                    pass
+                break
+
+        if relevance < _MIN_RELEVANCE:
+            continue  # 排除低相關文章（個股新聞、題外話等）
+
         sentiment = item.get("overall_sentiment_label", "Neutral")
         results.append({
             "title": title,
@@ -155,8 +174,14 @@ def fetch_alpha_vantage_news(api_key: str, topic: str, limit: int = 15) -> list[
             "time_display": _format_av_time(item.get("time_published", "")),
             "sentiment": _SENT_MAP.get(sentiment, "neut"),
             "url": item.get("url", "#"),
+            "_relevance": relevance,
         })
-    return results[:limit]
+
+    # 依相關性降序排列，取前 N 篇
+    results.sort(key=lambda x: x["_relevance"], reverse=True)
+    for r in results:
+        r.pop("_relevance")
+    return results[:_ARTICLES_PER_TOPIC]
 
 
 def _build_news_text(articles: list[dict]) -> str:
@@ -551,7 +576,8 @@ def main() -> None:
             try:
                 articles = fetch_alpha_vantage_news(av_key, cfg["api_topic"])
                 topic_news[topic_key] = articles
-                logger.info("Alpha Vantage %s: %d articles", cfg["api_topic"], len(articles))
+                logger.info("Alpha Vantage %s: %d articles (relevance≥%.2f)",
+                            cfg["api_topic"], len(articles), _MIN_RELEVANCE)
             except Exception as e:
                 logger.warning("Alpha Vantage %s failed: %s", cfg["api_topic"], e)
                 topic_news[topic_key] = []
