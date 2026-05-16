@@ -1,10 +1,7 @@
 name: 每日總經 AI 報告
 
 on:
-  schedule:
-    # UTC 23:00 = 台灣時間 07:00（UTC+8）
-    - cron: '0 23 * * *'
-  workflow_dispatch:  # 允許手動觸發
+  workflow_dispatch:  # 由 Cloudflare Worker 每日 UTC 23:00 觸發
 
 permissions:
   contents: write

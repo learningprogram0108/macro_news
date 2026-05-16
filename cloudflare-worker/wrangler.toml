@@ -1,0 +1,7 @@
+name = "macro-news-trigger"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[triggers]
+# UTC 23:00 = 台灣時間 07:00（UTC+8）
+crons = ["0 23 * * *"]
