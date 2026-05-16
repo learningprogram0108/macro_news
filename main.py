@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -170,21 +171,37 @@ def analyze_with_gemini(news_text: str, date: str, dcc_context: str = "") -> dic
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     dcc_block = f"{dcc_context}\n\n" if dcc_context else ""
     user_prompt = USER_PROMPT_TEMPLATE.format(date=date, dcc_context=dcc_block, news_text=news_text)
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=user_prompt,
-        config=genai.types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            max_output_tokens=16384,
-            temperature=0.3,
-        ),
-    )
-    raw = response.text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw.strip())
+
+    max_retries = 4
+    backoff = 30  # 秒，每次翻倍
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=user_prompt,
+                config=genai.types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    max_output_tokens=16384,
+                    temperature=0.3,
+                ),
+            )
+            raw = response.text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            return json.loads(raw.strip())
+        except Exception as e:
+            is_last = attempt == max_retries - 1
+            if is_last:
+                raise
+            err_str = str(e)
+            # 只對 503/429 重試，其他錯誤直接拋出
+            if "503" not in err_str and "429" not in err_str:
+                raise
+            wait = backoff * (2 ** attempt)
+            logger.warning("Gemini 暫時不可用（attempt %d/%d），%d 秒後重試：%s", attempt + 1, max_retries, wait, err_str[:120])
+            time.sleep(wait)
 
 # ── HTML report ────────────────────────────────────────────────────────────
 
