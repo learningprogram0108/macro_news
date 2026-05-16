@@ -19,6 +19,79 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+# ── Gemini 模型與速率限制 ──────────────────────────────────────────────────────
+
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_RPM   = 15        # requests per minute（免費方案上限）
+GEMINI_TPM   = 250_000   # tokens per minute（免費方案上限）
+
+# Plan A 單次呼叫的預估 token 量：
+#   系統提示 ~1,500 + DCC 上下文 ~500 + 4×15篇新聞 ~6,000 + 輸出上限 16,384 ≈ 25,000
+_ESTIMATED_TOKENS = 25_000
+
+# 每次請求之間的最小間隔 = 60s / RPM = 4 秒
+_MIN_REQUEST_INTERVAL = 60.0 / GEMINI_RPM
+
+
+class _SlidingWindowRateLimiter:
+    """
+    滑動視窗速率限制器，同時追蹤 RPM 與 TPM。
+    acquire() 在必要時 sleep，確保呼叫 Gemini API 前不超出限制。
+    """
+
+    def __init__(self, rpm: int, tpm: int) -> None:
+        self._rpm = rpm
+        self._tpm = tpm
+        self._req_ts: list[float] = []         # 過去 60s 內的請求時間戳
+        self._tok_log: list[tuple[float, int]] = []  # (timestamp, tokens)
+        self._last_req = 0.0
+
+    def acquire(self, estimated_tokens: int = _ESTIMATED_TOKENS) -> None:
+        """阻塞直到可安全發出請求，並記錄本次呼叫。"""
+        now = time.monotonic()
+        window = 60.0
+
+        # 清除超出視窗的舊記錄
+        self._req_ts  = [t for t in self._req_ts if now - t < window]
+        self._tok_log = [(t, n) for t, n in self._tok_log if now - t < window]
+
+        # ── RPM 檢查 ──
+        if len(self._req_ts) >= self._rpm:
+            wait = window - (now - self._req_ts[0]) + 0.5
+            if wait > 0:
+                logger.info("Gemini RPM 限速：等待 %.1f 秒（已用 %d/%d RPM）", wait, len(self._req_ts), self._rpm)
+                time.sleep(wait)
+                now = time.monotonic()
+                # 重新清理
+                self._req_ts  = [t for t in self._req_ts if now - t < window]
+                self._tok_log = [(t, n) for t, n in self._tok_log if now - t < window]
+
+        # ── TPM 檢查 ──
+        used_tokens = sum(n for _, n in self._tok_log)
+        if self._tok_log and used_tokens + estimated_tokens > self._tpm:
+            wait = window - (now - self._tok_log[0][0]) + 0.5
+            if wait > 0:
+                logger.info("Gemini TPM 限速：等待 %.1f 秒（已用 %d/%d TPM）", wait, used_tokens, self._tpm)
+                time.sleep(wait)
+                now = time.monotonic()
+                self._tok_log = [(t, n) for t, n in self._tok_log if now - t < window]
+
+        # ── 最小請求間隔（避免瞬間爆發） ──
+        gap = now - self._last_req
+        if gap < _MIN_REQUEST_INTERVAL:
+            wait = _MIN_REQUEST_INTERVAL - gap
+            logger.debug("Gemini 最小間隔：等待 %.2f 秒", wait)
+            time.sleep(wait)
+            now = time.monotonic()
+
+        # 記錄本次請求
+        self._last_req = now
+        self._req_ts.append(now)
+        self._tok_log.append((now, estimated_tokens))
+
+
+_rate_limiter = _SlidingWindowRateLimiter(rpm=GEMINI_RPM, tpm=GEMINI_TPM)
+
 # ── Alpha Vantage ─────────────────────────────────────────────────────────────
 
 TOPIC_CONFIG = {
@@ -203,11 +276,11 @@ def analyze_with_gemini(topic_news: dict[str, list], date: str, dcc_context: str
     )
 
     max_retries = 4
-    backoff = 30
     for attempt in range(max_retries):
+        _rate_limiter.acquire()  # 每次嘗試前強制通過速率限制器
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=GEMINI_MODEL,
                 contents=user_prompt,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
@@ -226,12 +299,19 @@ def analyze_with_gemini(topic_news: dict[str, list], date: str, dcc_context: str
             if is_last:
                 raise
             err_str = str(e)
-            if "503" not in err_str and "429" not in err_str:
+            if "429" in err_str:
+                # 超過每分鐘配額：等待整個視窗重置（60s）再加退避
+                wait = 60 + 30 * attempt  # 60, 90, 120s
+            elif "503" in err_str:
+                # 服務暫時不可用：指數退避
+                wait = 30 * (2 ** attempt)  # 30, 60, 120s
+            else:
                 raise
-            wait = backoff * (2 ** attempt)
             logger.warning(
-                "Gemini 暫時不可用（attempt %d/%d），%d 秒後重試：%s",
-                attempt + 1, max_retries, wait, err_str[:120],
+                "Gemini 暫時不可用（attempt %d/%d，%s），%d 秒後重試：%s",
+                attempt + 1, max_retries,
+                "429 速率限制" if "429" in err_str else "503 服務異常",
+                wait, err_str[:120],
             )
             time.sleep(wait)
 
