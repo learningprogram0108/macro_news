@@ -175,7 +175,7 @@ def analyze_with_gemini(news_text: str, date: str, dcc_context: str = "") -> dic
         contents=user_prompt,
         config=genai.types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            max_output_tokens=8192,
+            max_output_tokens=16384,
             temperature=0.3,
         ),
     )
