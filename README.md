@@ -1,6 +1,6 @@
 # 總體經濟 AI 監控報告系統
 
-每日自動抓取全球總經新聞，透過 DCC-GARCH 量化分析與 Gemini AI 深度解讀，產出結構化報告並推播至 LINE，月營運成本 NT$0。
+每日自動抓取全球總經新聞，透過 DCC-GARCH 量化分析與 Gemini AI 深度解讀，產出互動式 HTML 報告並推播至 LINE，月營運成本 NT$0。
 
 ---
 
@@ -19,20 +19,28 @@ GitHub Actions workflow_dispatch
         │       ├─ HRP 階層風險平價配置（Lopez de Prado 2016）
         │       └─ Risk Parity 等風險貢獻配置
         │
-        ├─► Finnhub API       → 市場新聞（general + forex）
-        ├─► FMP API           → 國際政經新聞（付費帳號可用）
+        ├─► Alpha Vantage NEWS_SENTIMENT API
+        │       ├─ economy_monetary  → 貨幣政策新聞
+        │       ├─ economy_macro     → 總體經濟新聞
+        │       ├─ economy_fiscal    → 財政政策新聞
+        │       └─ financial_markets → 金融市場新聞
         │
         ▼
    資料清理層
-   - 新聞去重（標題前 30 字比對）
+   - 每主題最多 N 篇，標題前 30 字去重
    - 摘要截斷至 200 字
         │
         ▼
-Gemini 2.5 Flash API
-   - 輸入：DCC-GARCH 量化結果 + 新聞文字
-   - 輸出：JSON 格式報告（max_output_tokens=16384）
-   - 包含主線判斷、情緒評分、13 個持倉戰術建議（數字有量化錨點）
+Gemini 2.5 Flash API（單次呼叫，Plan A）
+   - 輸入：DCC-GARCH 量化結果 + 4 主題新聞文字
+   - 輸出：JSON — 含 5 個分析區塊
+       ├─ 🏦 貨幣政策分析（380 字 + 影響標籤 + 4 篇摘要）
+       ├─ 📊 總體經濟分析（380 字 + 影響標籤 + 4 篇摘要）
+       ├─ 💰 財政政策分析（380 字 + 影響標籤 + 4 篇摘要）
+       ├─ 📈 金融市場分析（380 字 + 影響標籤 + 4 篇摘要）
+       └─ 🤖 AI 綜合研判（主線判斷 + 情緒評分 + 13 個持倉建議）
    - 503/429 錯誤自動 retry（最多 4 次，指數退避 30/60/120 秒）
+   - max_output_tokens=16384
         │
         ├─► LINE Messaging API  → 持倉分組完整分析推播
         └─► Jinja2 HTML 模板   → 互動式完整報告
@@ -45,7 +53,7 @@ Gemini 2.5 Flash API
 
 | 元件 | 方案 | 免費額度 |
 |---|---|---|
-| 新聞來源 | Finnhub API | 60 次/分鐘 |
+| 新聞來源 | Alpha Vantage NEWS_SENTIMENT | 25 次/日（免費方案） |
 | 量化分析 | DCC-GARCH（arch + scipy） | 本地運算，無 API 費用 |
 | 價格資料 | yfinance（Yahoo Finance） | 免費 |
 | AI 分析 | Google Gemini 2.5 Flash | 免費額度充足 |
@@ -67,6 +75,23 @@ Gemini 2.5 Flash API
 - **條件波動率（年化）**：各資產當前 GARCH(1,1) 條件標準差
 - **HRP 配置**：Hierarchical Risk Parity — 階層聚類 + 遞迴二分，不需矩陣求逆，對估計誤差更穩健
 - **Risk Parity 配置**：等風險貢獻（ERC），每資產貢獻相同組合風險
+
+### 互動式 HTML 報告（Plan A：單次 Gemini 呼叫）
+
+每日產出一份互動式報告，結構如下：
+
+```
+┌─────────────────────────────────────────┐
+│  📐 DCC 快速列（相關係數 + 波動率）        │
+├───────┬───────┬───────┬───────┬─────────┤
+│ 🏦貨幣 │ 📊總經 │ 💰財政 │ 📈市場 │ 🤖綜合 │  ← 5 個主題卡
+└───────┴───────┴───────┴───────┴─────────┘
+```
+
+- **5 個主題卡**：每卡含 Gemini 深度分析（380 字）+ 4 篇新聞摘要
+- **點入主題**：展開完整分析頁面，含影響標籤（看多/看空/中性）
+- **展開文章**：點擊標題查看 Alpha Vantage 原文摘要（英文）
+- **綜合研判**：AI 主線判斷 + 情緒評分 + 13 個持倉戰術建議
 
 ### AI 總經分析
 
@@ -169,8 +194,7 @@ $$\min_w \sum_{i=1}^{n}\!\left(\mathit{RC}_i - \frac{w'H_t w}{n}\right)^{\!2} \q
 建立 `.env`（不會被 commit）：
 
 ```env
-FINNHUB_API_KEY=
-FMP_API_KEY=
+ALPHA_VANTAGE_API_KEY=
 GEMINI_API_KEY=
 LINE_CHANNEL_ACCESS_TOKEN=
 LINE_USER_ID=
@@ -191,12 +215,11 @@ python dcc_garch.py
 
 ### GitHub Secrets
 
-前往 `Settings → Secrets and variables → Actions`，新增以下 5 個 Secret：
+前往 `Settings → Secrets and variables → Actions`，新增以下 Secret：
 
 | Secret 名稱 | 說明 |
 |---|---|
-| `FINNHUB_API_KEY` | Finnhub 免費 API Key |
-| `FMP_API_KEY` | Financial Modeling Prep API Key |
+| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage 免費 API Key |
 | `GEMINI_API_KEY` | Google AI Studio API Key |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Messaging API Channel Token |
 | `LINE_USER_ID` | 接收推播的 LINE 使用者 ID |
@@ -224,7 +247,7 @@ npx wrangler secret put GITHUB_REPO    # 填入：learningprogram0108/macro_news
 macro_news/
 ├── main.py                        # 主程式（DCC-GARCH → 新聞抓取 → Gemini 分析 → 推播）
 ├── dcc_garch.py                   # DCC-GARCH(1,1) 量化引擎 + HRP + Risk Parity
-├── report_template.html           # Jinja2 互動式報告模板
+├── report_template.html           # Jinja2 互動式報告模板（5 主題卡 + DCC 列）
 ├── requirements.txt
 ├── .gitignore
 ├── cloudflare-worker/
