@@ -435,12 +435,12 @@
           {% if art.time_display %}<span class="art-time">{{ art.time_display }}</span>{% endif %}
           <span class="sent-chip {{ art.sentiment }}">{% if art.sentiment == 'bull' %}看多{% elif art.sentiment == 'bear' %}看空{% else %}中性{% endif %}</span>
         </div>
-        <h4>{{ art.title }}</h4>
+        <h4>{{ art.title_zh if art.title_zh is defined and art.title_zh else art.title }}</h4>
       </div>
       <span class="art-toggle">▾ 展開</span>
     </div>
     <div class="art-body">
-      <p>{{ art.summary }}</p>
+      <p>{{ art.summary_zh if art.summary_zh is defined and art.summary_zh else art.summary }}</p>
       {% if art.url and art.url != '#' %}
       <a href="{{ art.url }}" target="_blank" rel="noopener">🔗 原始來源：{{ art.source }}</a>
       {% endif %}

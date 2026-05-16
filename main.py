@@ -183,11 +183,14 @@ JSON 結構如下（注意：analysis 欄位段落間用 \\n\\n 分隔）：
       "impact_tags": [
         {"color": "red|green|amber|blue", "text": "持倉影響標籤（如：🔴 TLT 短期承壓）"}
       ],
-      "key_points": ["重點一（30字內）", "重點二", "重點三", "重點四"]
+      "key_points": ["重點一（30字內）", "重點二", "重點三", "重點四"],
+      "articles": [
+        {"title_zh": "將原文標題翻成繁體中文", "summary_zh": "將原文摘要翻成繁體中文（100字內）"}
+      ]
     },
-    "macro":    { "同上結構": "" },
-    "fiscal":   { "同上結構": "" },
-    "markets":  { "同上結構": "" }
+    "macro":    { "同上結構（含 articles 翻譯）": "" },
+    "fiscal":   { "同上結構（含 articles 翻譯）": "" },
+    "markets":  { "同上結構（含 articles 翻譯）": "" }
   },
   "synthesis": {
     "macro_theme": {
@@ -237,7 +240,9 @@ JSON 結構如下（注意：analysis 欄位段落間用 \\n\\n 分隔）：
 4. synthesis.watchlist 恰好 4 個事件
 5. topics[*].analysis 不得少於 350 字，段落間用 \\n\\n 分隔
 6. synthesis.tactical_guidance 中的 rationale 必須具體提及今日主線，不得寫教科書式通則
-7. 所有文字使用繁體中文
+7. topics[*].articles 的順序與數量必須與輸入新聞完全對應，不得增減
+8. articles[*].summary_zh 限 100 字以內，保留關鍵數據與人名
+9. 所有文字（含 articles 翻譯）使用繁體中文
 """
 
 USER_PROMPT_TEMPLATE = """\
@@ -496,10 +501,19 @@ def main() -> None:
             send_error_notification("Gemini 分析", e)
             return
 
-        # Step 3: 將原始新聞文章合併進 report_data，並預處理分析段落
+        # Step 3: 將原始新聞文章合併進 report_data，並注入 Gemini 翻譯結果
         for key in TOPIC_CONFIG:
             topic = report_data.get("topics", {}).get(key, {})
-            topic["news"] = topic_news.get(key, [])
+            raw_news = topic_news.get(key, [])
+            translations = topic.pop("articles", [])  # Gemini 輸出的翻譯陣列
+            for i, art in enumerate(raw_news):
+                if i < len(translations):
+                    art["title_zh"]   = translations[i].get("title_zh")   or art["title"]
+                    art["summary_zh"] = translations[i].get("summary_zh") or art["summary"]
+                else:
+                    art["title_zh"]   = art["title"]
+                    art["summary_zh"] = art["summary"]
+            topic["news"] = raw_news
             topic["analysis_paragraphs"] = [
                 p.strip() for p in topic.get("analysis", "").split("\n\n") if p.strip()
             ]
