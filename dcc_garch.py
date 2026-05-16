@@ -99,10 +99,10 @@ def estimate_dcc_params(std_resids: np.ndarray) -> tuple[float, float]:
         _dcc_loglikelihood,
         x0=[0.05, 0.90],
         args=(std_resids, Q_bar),
-        method="L-BFGS-B",
+        method="SLSQP",
         bounds=[(1e-6, 0.3), (1e-6, 0.999)],
         constraints={"type": "ineq", "fun": lambda p: 1 - p[0] - p[1] - 1e-6},
-        options={"maxiter": 500},
+        options={"maxiter": 500, "ftol": 1e-9},
     )
     if not result.success:
         logger.warning("DCC 最佳化未完全收斂，使用目前最佳解")
