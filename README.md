@@ -12,35 +12,42 @@ Cloudflare Worker（每日台灣時間 07:00）
         ▼
 GitHub Actions workflow_dispatch
         │
-        ├─► [量化分析層] DCC-GARCH(1,1)
+        ├─► [Step 0] DCC-GARCH(1,1) 量化分析
         │       ├─ yfinance 抓取 VOO / TLT / GLD 兩年日線
         │       ├─ GARCH(1,1) 估計各資產條件波動率
         │       ├─ DCC(1,1) 估計動態條件相關矩陣
         │       ├─ HRP 階層風險平價配置（Lopez de Prado 2016）
         │       └─ Risk Parity 等風險貢獻配置
         │
-        ├─► Alpha Vantage NEWS_SENTIMENT API
+        ├─► [Step 1] Alpha Vantage NEWS_SENTIMENT API
         │       ├─ economy_monetary  → 貨幣政策新聞
         │       ├─ economy_macro     → 總體經濟新聞
         │       ├─ economy_fiscal    → 財政政策新聞
         │       └─ financial_markets → 金融市場新聞
+        │       各主題請求間隔 1.5 秒（免費方案 1 req/s 限制）
         │
         ▼
-   資料清理層
-   - 每主題最多 N 篇，標題前 30 字去重
-   - 摘要截斷至 200 字
+   資料清理 & 品質篩選
+   - 每主題抓取 50 篇候選（sort=RELEVANCE）
+   - 按主題 relevance_score ≥ 0.35 過濾低相關文章
+   - 取相關性最高的前 10 篇，標題前 30 字去重
+        │
+        ├─► [Step 1.5] Gemini 3.1 Flash Lite — 文章翻譯
+        │       - 單次呼叫，40 篇標題 + 摘要 → 繁體中文
+        │       - temperature=0.1，503/429 自動 retry
         │
         ▼
-Gemini 2.5 Flash API（單次呼叫，Plan A）
-   - 輸入：DCC-GARCH 量化結果 + 4 主題新聞文字
+[Step 2] Gemini 3.1 Flash Lite — 主分析（Plan A 單次呼叫）
+   - 輸入：DCC-GARCH 量化結果 + 4 主題新聞（共 ~40 篇）
    - 輸出：JSON — 含 5 個分析區塊
-       ├─ 🏦 貨幣政策分析（380 字 + 影響標籤 + 4 篇摘要）
-       ├─ 📊 總體經濟分析（380 字 + 影響標籤 + 4 篇摘要）
-       ├─ 💰 財政政策分析（380 字 + 影響標籤 + 4 篇摘要）
-       ├─ 📈 金融市場分析（380 字 + 影響標籤 + 4 篇摘要）
+       ├─ 🏦 貨幣政策分析（380 字 + 影響標籤 + 重點摘要）
+       ├─ 📊 總體經濟分析（380 字 + 影響標籤 + 重點摘要）
+       ├─ 💰 財政政策分析（380 字 + 影響標籤 + 重點摘要）
+       ├─ 📈 金融市場分析（380 字 + 影響標籤 + 重點摘要）
        └─ 🤖 AI 綜合研判（主線判斷 + 情緒評分 + 13 個持倉建議）
-   - 503/429 錯誤自動 retry（最多 4 次，指數退避 30/60/120 秒）
-   - max_output_tokens=16384
+   - max_output_tokens=16384，temperature=0.3
+   - 速率限制：RPM=15 / TPM=250K 滑動視窗限制器
+   - 503/429 差異化 retry（429→60+30n 秒；503→30×2ⁿ 秒）
         │
         ├─► LINE Messaging API  → 持倉分組完整分析推播
         └─► Jinja2 HTML 模板   → 互動式完整報告
@@ -56,7 +63,7 @@ Gemini 2.5 Flash API（單次呼叫，Plan A）
 | 新聞來源 | Alpha Vantage NEWS_SENTIMENT | 25 次/日（免費方案） |
 | 量化分析 | DCC-GARCH（arch + scipy） | 本地運算，無 API 費用 |
 | 價格資料 | yfinance（Yahoo Finance） | 免費 |
-| AI 分析 | Google Gemini 2.5 Flash | 免費額度充足 |
+| AI 翻譯 + 分析 | Gemini 3.1 Flash Lite | RPM=15 / TPM=250K（免費方案）|
 | 推播 | LINE Messaging API | 200 則/月 |
 | 排程 | Cloudflare Workers Cron | 100,000 次/日 |
 | CI/CD | GitHub Actions | 免費額度涵蓋 |
@@ -76,22 +83,46 @@ Gemini 2.5 Flash API（單次呼叫，Plan A）
 - **HRP 配置**：Hierarchical Risk Parity — 階層聚類 + 遞迴二分，不需矩陣求逆，對估計誤差更穩健
 - **Risk Parity 配置**：等風險貢獻（ERC），每資產貢獻相同組合風險
 
-### 互動式 HTML 報告（Plan A：單次 Gemini 呼叫）
+### 新聞品質篩選
+
+Alpha Vantage 每篇文章附帶各主題的相關性分數（`relevance_score`），利用此機制自動排除低相關雜訊：
+
+- 每主題抓取 50 篇候選，按 `sort=RELEVANCE` 排序
+- 過濾 `relevance_score < 0.35` 的個股、題外話等低品質文章
+- 保留相關性最高的前 10 篇送入 Gemini 分析
+
+### 文章全繁體中文化（Step 1.5）
+
+Alpha Vantage 原始文章為英文。獨立的 Gemini 翻譯呼叫（`temperature=0.1`）在主分析前將 40 篇文章的標題與摘要翻成繁體中文，翻譯失敗時靜默降級保留英文原文，不影響主分析流程。
+
+### Gemini 速率限制器
+
+`_SlidingWindowRateLimiter` 類別同時管控翻譯與分析兩次呼叫：
+
+| 限制 | 設定 | 機制 |
+|---|---|---|
+| RPM | 15 次/分鐘 | 滑動視窗，觸頂時等待至窗口重置 |
+| TPM | 250,000 tokens/分鐘 | 預估 token 量追蹤，超限時等待 |
+| 最小間隔 | 4 秒（60 ÷ 15） | 每次請求前強制補足間隔 |
+
+429（配額超限）→ 等待 60 + 30n 秒；503（服務異常）→ 等待 30 × 2ⁿ 秒。
+
+### 互動式 HTML 報告
 
 每日產出一份互動式報告，結構如下：
 
 ```
 ┌─────────────────────────────────────────┐
-│  📐 DCC 快速列（相關係數 + 波動率）        │
+│  📐 DCC 快速列（相關係數 + 波動率 + 配置）  │
 ├───────┬───────┬───────┬───────┬─────────┤
 │ 🏦貨幣 │ 📊總經 │ 💰財政 │ 📈市場 │ 🤖綜合 │  ← 5 個主題卡
 └───────┴───────┴───────┴───────┴─────────┘
 ```
 
-- **5 個主題卡**：每卡含 Gemini 深度分析（380 字）+ 4 篇新聞摘要
-- **點入主題**：展開完整分析頁面，含影響標籤（看多/看空/中性）
-- **展開文章**：點擊標題查看 Alpha Vantage 原文摘要（英文）
-- **綜合研判**：AI 主線判斷 + 情緒評分 + 13 個持倉戰術建議
+- **5 個主題卡**：每卡含 Gemini 深度分析摘要 + 4 個關鍵重點
+- **點入主題**：展開完整分析頁面，含 380 字深度分析 + 影響標籤
+- **展開文章**：點擊標題查看繁體中文翻譯摘要 + 看多/看空/中性標籤
+- **綜合研判**：AI 主線判斷 + 情緒評分 + 13 個持倉戰術建議 + 防禦觀察清單
 
 ### AI 總經分析
 
@@ -100,7 +131,6 @@ Gemini 2.5 Flash API（單次呼叫，Plan A）
 - **風險標籤**：自動標記當日主要風險事件
 - **13 個持倉戰術建議**：按群組分析，add/reduce 附完整 rationale，VOO/TLT/GLD 永遠顯示量化說明
 - **防禦觀察清單**：4 個關鍵觸發事件及持倉連動分析
-- **三大核心主題**：含數據格、持倉影響
 
 ### 持倉清單
 
@@ -245,7 +275,7 @@ npx wrangler secret put GITHUB_REPO    # 填入：learningprogram0108/macro_news
 
 ```
 macro_news/
-├── main.py                        # 主程式（DCC-GARCH → 新聞抓取 → Gemini 分析 → 推播）
+├── main.py                        # 主程式（DCC-GARCH → 新聞抓取 → 翻譯 → Gemini 分析 → 推播）
 ├── dcc_garch.py                   # DCC-GARCH(1,1) 量化引擎 + HRP + Risk Parity
 ├── report_template.html           # Jinja2 互動式報告模板（5 主題卡 + DCC 列）
 ├── requirements.txt
