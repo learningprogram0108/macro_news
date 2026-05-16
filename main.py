@@ -239,7 +239,40 @@ _GROUP_ORDER = [
 # VOO/TLT/GLD 為 DCC 量化標的，永遠顯示 rationale
 _DCC_TICKERS = {"VOO", "TLT", "GLD", "黃金(GLD)"}
 
-def send_line_message(report_data: dict, report_url: str, date_str: str) -> None:
+def _dcc_trend(current: float, avg30: float, pair: str) -> str:
+    diff = current - avg30
+    if abs(diff) < 0.02:
+        arrow = "→ 持平"
+    elif diff > 0:
+        arrow = "↑ 上升"
+    else:
+        arrow = "↓ 下降"
+    # VOO↔TLT：負相關越強代表避險效果越好
+    if pair == "VOO_TLT":
+        if diff < -0.02:
+            return f"{arrow}（避險效果增強）"
+        elif diff > 0.02:
+            return f"{arrow}（避險效果減弱）"
+    return arrow
+
+
+def _format_dcc_section(d: dict) -> str:
+    c, c30 = d["corr"], d["corr_30d_avg"]
+    v = d["vol_annual"]
+    ms, rp = d["max_sharpe"], d["risk_parity"]
+    lines = [
+        "📐 量化配置分析",
+        f"• VOO↔TLT：{c['VOO_TLT']:+.2f} {_dcc_trend(c['VOO_TLT'], c30['VOO_TLT'], 'VOO_TLT')}",
+        f"• VOO↔GLD：{c['VOO_GLD']:+.2f} {_dcc_trend(c['VOO_GLD'], c30['VOO_GLD'], 'VOO_GLD')}",
+        f"• GLD↔TLT：{c['TLT_GLD']:+.2f} {_dcc_trend(c['TLT_GLD'], c30['TLT_GLD'], 'TLT_GLD')}",
+        f"• 波動率：VOO {v['VOO']:.1%} | TLT {v['TLT']:.1%} | GLD {v['GLD']:.1%}",
+        f"• Max Sharpe：VOO {ms['VOO']:.0%} / TLT {ms['TLT']:.0%} / GLD {ms['GLD']:.0%}",
+        f"• Risk Parity：VOO {rp['VOO']:.0%} / TLT {rp['TLT']:.0%} / GLD {rp['GLD']:.0%}",
+    ]
+    return "\n".join(lines)
+
+
+def send_line_message(report_data: dict, report_url: str, date_str: str, dcc_result: dict | None = None) -> None:
     theme = report_data["macro_theme"]
     sentiment = report_data["sentiment"]
     tags = " · ".join([t["label"] for t in report_data["risk_tags"]])
@@ -269,6 +302,7 @@ def send_line_message(report_data: dict, report_url: str, date_str: str) -> None
         sections.append("\n".join(lines))
 
     holdings_text = "\n\n".join(sections)
+    dcc_section = f"\n{_format_dcc_section(dcc_result)}\n" if dcc_result else ""
 
     message = (
         f"📊 每日總經 AI 監控報告\n"
@@ -278,7 +312,8 @@ def send_line_message(report_data: dict, report_url: str, date_str: str) -> None
         f"{theme['description']}\n\n"
         f"📈 情緒評分：{sentiment['score']}/10 {sentiment['label']}\n"
         f"{sentiment['reasoning']}\n\n"
-        f"⚠️ 風險標籤：{tags}\n\n"
+        f"⚠️ 風險標籤：{tags}\n"
+        f"{dcc_section}\n"
         f"━━━━━━━━━━━━━━━\n"
         f"🎯 持倉配置分析\n"
         f"━━━━━━━━━━━━━━━\n"
@@ -305,6 +340,7 @@ def main() -> None:
     try:
         # Step 0: DCC-GARCH 量化分析（失敗時靜默降級，不中止主流程）
         dcc_context = ""
+        dcc_result = None
         try:
             dcc_result = dcc_garch.run_dcc_analysis()
             dcc_context = dcc_garch.format_dcc_for_prompt(dcc_result)
@@ -363,7 +399,7 @@ def main() -> None:
                 report_url = f"https://{owner}.github.io/{repo_name}/{report_filename}"
             else:
                 report_url = "（報告連結暫不可用）"
-            send_line_message(report_data, report_url, date_str)
+            send_line_message(report_data, report_url, date_str, dcc_result)
             logger.info("LINE push sent")
         except Exception as e:
             send_error_notification("LINE 推播", e)
