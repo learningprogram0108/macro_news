@@ -471,7 +471,9 @@ def main() -> None:
         # Step 1: fetch Alpha Vantage news (4 topics)
         av_key = os.environ.get("ALPHA_VANTAGE_API_KEY", "")
         topic_news: dict[str, list] = {}
-        for topic_key, cfg in TOPIC_CONFIG.items():
+        for i, (topic_key, cfg) in enumerate(TOPIC_CONFIG.items()):
+            if i > 0:
+                time.sleep(1.5)  # Alpha Vantage 免費方案：1 req/s 限制，留 0.5s 緩衝
             try:
                 articles = fetch_alpha_vantage_news(av_key, cfg["api_topic"])
                 topic_news[topic_key] = articles
