@@ -6,6 +6,11 @@ on:
     - cron: '0 23 * * *'
   workflow_dispatch:  # 允許手動觸發
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   run-report:
     runs-on: ubuntu-latest
@@ -39,3 +44,20 @@ jobs:
           git add reports/
           git diff --staged --quiet || git commit -m "report: $(date +'%Y-%m-%d') 自動生成"
           git push
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+  deploy-pages:
+    needs: run-report
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
