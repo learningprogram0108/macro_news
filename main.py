@@ -221,25 +221,68 @@ def _line_push(message: str) -> None:
             messages=[TextMessage(text=message)],
         ))
 
+_ACTION_EMOJI = {
+    "add":    "🟢",
+    "hold":   "⚪",
+    "watch":  "🟡",
+    "reduce": "🔴",
+    "cash":   "💵",
+}
+
+_GROUP_ORDER = [
+    ("核心股票",   "📈"),
+    ("品質防禦",   "🛡️"),
+    ("固定收益",   "🏦"),
+    ("實物資產",   "🥇"),
+]
+
+# VOO/TLT/GLD 為 DCC 量化標的，永遠顯示 rationale
+_DCC_TICKERS = {"VOO", "TLT", "GLD", "黃金(GLD)"}
+
 def send_line_message(report_data: dict, report_url: str, date_str: str) -> None:
     theme = report_data["macro_theme"]
     sentiment = report_data["sentiment"]
     tags = " · ".join([t["label"] for t in report_data["risk_tags"]])
-    key_actions = [
-        f"• {g['ticker']} {g['action']}"
-        for g in report_data["tactical_guidance"]
-        if g["action_type"] in ("add", "reduce", "cash")
-    ][:3]
-    actions_text = "\n".join(key_actions) if key_actions else "• 今日無明確異動建議，維持現有配置"
+
+    # 以 group 欄位建立索引
+    by_group: dict[str, list] = {}
+    for g in report_data["tactical_guidance"]:
+        by_group.setdefault(g["group"], []).append(g)
+
+    sections: list[str] = []
+    for group_name, emoji in _GROUP_ORDER:
+        holdings = by_group.get(group_name, [])
+        if not holdings:
+            continue
+        lines = [f"{emoji}【{group_name}】"]
+        for h in holdings:
+            action_icon = _ACTION_EMOJI.get(h["action_type"], "•")
+            show_rationale = (
+                h["action_type"] in ("add", "reduce", "cash")
+                or h["ticker"] in _DCC_TICKERS
+            )
+            if show_rationale:
+                lines.append(f"{action_icon} {h['ticker']} {h['action']}")
+                lines.append(f"   └ {h['rationale']}")
+            else:
+                lines.append(f"{action_icon} {h['ticker']} {h['action']}")
+        sections.append("\n".join(lines))
+
+    holdings_text = "\n\n".join(sections)
+
     message = (
         f"📊 每日總經 AI 監控報告\n"
         f"{date_str} 台灣時間 07:00\n\n"
-        f"🧭 今日主線：{theme['type']}\n"
-        f"{theme['title']}\n\n"
-        f"📈 情緒評分：{sentiment['score']}/10 {sentiment['label']}\n\n"
+        f"🧭 今日主線：{theme['type']}（信心度 {theme['confidence']}%）\n"
+        f"{theme['title']}\n"
+        f"{theme['description']}\n\n"
+        f"📈 情緒評分：{sentiment['score']}/10 {sentiment['label']}\n"
+        f"{sentiment['reasoning']}\n\n"
         f"⚠️ 風險標籤：{tags}\n\n"
-        f"🎯 關鍵操作：\n"
-        f"{actions_text}\n\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"🎯 持倉配置分析\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"{holdings_text}\n\n"
         f"📋 完整報告：{report_url}"
     )
     _line_push(message)
