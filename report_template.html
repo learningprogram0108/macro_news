@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>總經 AI 報告 — {{ date }}</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2d3149;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --add: #22c55e;
+    --hold: #3b82f6;
+    --watch: #eab308;
+    --reduce: #f97316;
+    --cash: #ef4444;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --green: #22c55e;
+    --liquidity: #8b5cf6;
+    --fundamental: #0ea5e9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .container { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  /* Header */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 24px;
+  }
+  .header-meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+  .header-sources { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .source-badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Section */
+  .section { margin-bottom: 20px; }
+
+  /* Macro Theme Banner */
+  .theme-banner {
+    border-radius: 10px;
+    padding: 20px 22px;
+    border: 1px solid;
+    margin-bottom: 20px;
+  }
+  .theme-banner.liquidity {
+    background: linear-gradient(135deg, #1a1030 0%, #1f1535 100%);
+    border-color: #4c1d95;
+  }
+  .theme-banner.fundamental {
+    background: linear-gradient(135deg, #0c1a2e 0%, #0f2040 100%);
+    border-color: #075985;
+  }
+  .theme-type {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .theme-banner.liquidity .theme-type { color: var(--liquidity); }
+  .theme-banner.fundamental .theme-type { color: var(--fundamental); }
+  .theme-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+  .theme-desc { color: #b0bec5; font-size: 13px; margin-bottom: 14px; }
+  .confidence-row { display: flex; align-items: center; gap: 10px; }
+  .confidence-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .progress-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .theme-banner.liquidity .progress-fill { background: var(--liquidity); }
+  .theme-banner.fundamental .progress-fill { background: var(--fundamental); }
+  .confidence-val { font-size: 12px; font-weight: 600; min-width: 36px; text-align: right; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  /* Sentiment */
+  .sentiment-score-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .sentiment-num { font-size: 36px; font-weight: 800; line-height: 1; }
+  .sentiment-label { font-size: 16px; font-weight: 600; }
+  .sentiment-bar-wrap { margin-bottom: 10px; }
+  .sentiment-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(to right, #ef4444 0%, #f59e0b 30%, #eab308 50%, #84cc16 70%, #22c55e 100%);
+    position: relative;
+  }
+  .sentiment-cursor {
+    position: absolute;
+    top: -3px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.5);
+    transform: translateX(-50%);
+  }
+  .sentiment-reasoning { font-size: 13px; color: var(--muted); }
+
+  /* Risk tags */
+  .risk-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .risk-tag {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid;
+  }
+  .risk-tag.risk { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+  .risk-tag.warn { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.4); color: #fcd34d; }
+  .risk-tag.positive { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.4); color: #86efac; }
+
+  /* Collapsible details */
+  details { margin-bottom: 14px; }
+  details > summary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+    font-weight: 600;
+    font-size: 14px;
+    transition: background 0.15s;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary:hover { background: var(--surface2); }
+  details[open] > summary {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-color: transparent;
+  }
+  .summary-arrow { color: var(--muted); font-size: 12px; transition: transform 0.2s; }
+  details[open] .summary-arrow { transform: rotate(180deg); }
+  .details-body {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    padding: 0 18px 16px;
+  }
+
+  /* Tactical guidance */
+  .group-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding: 14px 0 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .guidance-row {
+    display: grid;
+    grid-template-columns: 90px 130px 90px 1fr;
+    gap: 8px;
+    align-items: start;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .guidance-row:last-child { border-bottom: none; }
+  .ticker-cell { font-weight: 700; font-family: monospace; font-size: 13px; }
+  .name-cell { color: var(--muted); font-size: 12px; padding-top: 1px; }
+  .action-cell { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+  .action-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  }
+  .action-dot.add    { background: var(--add); }
+  .action-dot.hold   { background: var(--hold); }
+  .action-dot.watch  { background: var(--watch); }
+  .action-dot.reduce { background: var(--reduce); }
+  .action-dot.cash   { background: var(--cash); }
+  .action-text.add    { color: var(--add); }
+  .action-text.hold   { color: var(--hold); }
+  .action-text.watch  { color: var(--watch); }
+  .action-text.reduce { color: var(--reduce); }
+  .action-text.cash   { color: var(--cash); }
+  .rationale-cell { font-size: 12px; color: #94a3b8; line-height: 1.5; }
+
+  /* Watchlist */
+  .watchlist-item {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: start;
+  }
+  .watchlist-item:last-child { border-bottom: none; }
+  .watch-event { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .watch-rationale { font-size: 12px; color: var(--muted); }
+  .watch-date {
+    font-size: 11px;
+    color: var(--amber);
+    background: rgba(245,158,11,0.1);
+    border: 1px solid rgba(245,158,11,0.25);
+    border-radius: 4px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  /* Topics */
+  .topic-header { display: flex; align-items: center; gap: 10px; }
+  .topic-icon { font-size: 20px; }
+  .topic-info { flex: 1; }
+  .topic-category { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .topic-name { font-weight: 700; font-size: 14px; }
+  .severity-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 4px;
+    border: 1px solid;
+  }
+  .severity-badge.high {
+    background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.4); color: #fca5a5;
+  }
+  .severity-badge.medium {
+    background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.4); color: #fcd34d;
+  }
+  .severity-badge.positive {
+    background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.4); color: #86efac;
+  }
+  .topic-summary {
+    font-size: 13px;
+    color: #94a3b8;
+    margin: 12px 0;
+    line-height: 1.6;
+  }
+
+  /* Data points */
+  .data-points {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .data-point {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    min-width: 110px;
+  }
+  .dp-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .dp-value { font-size: 14px; font-weight: 700; font-family: monospace; }
+
+  /* Portfolio impact */
+  .impact-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .impact-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+  .impact-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+  }
+  .impact-dot.red   { background: var(--red); }
+  .impact-dot.amber { background: var(--amber); }
+  .impact-dot.green { background: var(--green); }
+
+  /* Topic sources */
+  .topic-sources { display: flex; gap: 6px; flex-wrap: wrap; }
+  .topic-source {
+    font-size: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 6px;
+    color: var(--muted);
+  }
+  .section-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 0 12px;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  @media (max-width: 600px) {
+    .guidance-row {
+      grid-template-columns: 70px 1fr;
+      grid-template-rows: auto auto;
+    }
+    .name-cell { grid-column: 2; }
+    .action-cell { grid-column: 1; }
+    .rationale-cell { grid-column: 2; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-meta">自動生成報告</div>
+    <h1>📊 每日總經 AI 監控報告</h1>
+    <div class="header-meta" style="margin-top:6px">{{ date }} · 台灣時間 07:00</div>
+    <div class="header-sources">
+      <span class="source-badge">Finnhub</span>
+      <span class="source-badge">Financial Modeling Prep</span>
+      <span class="source-badge">Gemini 2.0 Flash</span>
+    </div>
+  </div>
+
+  <!-- Macro Theme Banner -->
+  {% set theme_class = "liquidity" if data.macro_theme.type == "流動性主導" else "fundamental" %}
+  <div class="theme-banner {{ theme_class }}">
+    <div class="theme-type">🧭 今日主線 · {{ data.macro_theme.type }}</div>
+    <div class="theme-title">{{ data.macro_theme.title }}</div>
+    <div class="theme-desc">{{ data.macro_theme.description }}</div>
+    <div class="confidence-row">
+      <span class="confidence-label">主線信心度</span>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: {{ data.macro_theme.confidence }}%"></div>
+      </div>
+      <span class="confidence-val">{{ data.macro_theme.confidence }}%</span>
+    </div>
+  </div>
+
+  <!-- Sentiment -->
+  <div class="card">
+    <div class="card-title">市場風險情緒</div>
+    <div class="sentiment-score-row">
+      <span class="sentiment-num">{{ data.sentiment.score }}</span>
+      <span style="color:var(--muted);font-size:16px">/10</span>
+      <span class="sentiment-label">{{ data.sentiment.label }}</span>
+    </div>
+    <div class="sentiment-bar-wrap">
+      <div class="sentiment-bar">
+        <div class="sentiment-cursor" style="left: {{ ((data.sentiment.score - 1) / 9 * 100) | int }}%"></div>
+      </div>
+    </div>
+    <div class="sentiment-reasoning">{{ data.sentiment.reasoning }}</div>
+  </div>
+
+  <!-- Risk Tags -->
+  <div class="card">
+    <div class="card-title">風險標籤</div>
+    <div class="risk-tags">
+      {% for tag in data.risk_tags %}
+      <span class="risk-tag {{ tag.type }}">{{ tag.label }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Tactical Guidance -->
+  <details open>
+    <summary>
+      <span>🎯 戰術配置指引（13 個持倉）</span>
+      <span class="summary-arrow">▼</span>
+    </summary>
+    <div class="details-body">
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:var(--add)"></span>加碼</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--hold)"></span>維持</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--watch)"></span>觀察</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--reduce)"></span>謹慎</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--cash)"></span>減碼/現金</span>
+      </div>
+
+      {% set groups = ["核心股票", "品質防禦", "固定收益", "實物資產"] %}
+      {% for group in groups %}
+        {% set items = data.tactical_guidance | selectattr("group", "equalto", group) | list %}
+        {% if items %}
+        <div class="group-label">{{ group }}</div>
+        {% for item in items %}
+        <div class="guidance-row">
+          <div class="ticker-cell">{{ item.ticker }}</div>
+          <div class="name-cell">{{ item.name }}</div>
+          <div class="action-cell">
+            <span class="action-dot {{ item.action_type }}"></span>
+            <span class="action-text {{ item.action_type }}">{{ item.action }}</span>
+          </div>
+          <div class="rationale-cell">{{ item.rationale }}</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      {% endfor %}
+    </div>
+  </details>
+
+  <!-- Watchlist -->
+  <details>
+    <summary>
+      <span>👀 未來 3–5 日防禦觀察清單</span>
+      <span class="summary-arrow">▼</span>
+    </summary>
+    <div class="details-body">
+      {% for item in data.watchlist %}
+      <div class="watchlist-item">
+        <div>
+          <div class="watch-event">{{ item.event }}</div>
+          <div class="watch-rationale">{{ item.rationale }}</div>
+        </div>
+        <div class="watch-date">{{ item.date_hint }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+
+  <!-- Topics -->
+  <div class="card-title" style="margin: 20px 0 10px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--muted);">三大核心主題</div>
+
+  {% for topic in data.topics %}
+  <details>
+    <summary>
+      <span class="topic-header">
+        <span class="topic-icon">{{ topic.icon }}</span>
+        <span class="topic-info">
+          <div class="topic-category">{{ topic.category }}</div>
+          <div class="topic-name">{{ topic.title }}</div>
+        </span>
+        <span class="severity-badge {{ topic.severity }}">
+          {% if topic.severity == "high" %}高風險{% elif topic.severity == "medium" %}中風險{% else %}正面{% endif %}
+        </span>
+      </span>
+      <span class="summary-arrow" style="margin-left:10px">▼</span>
+    </summary>
+    <div class="details-body">
+      <p class="topic-summary">{{ topic.summary }}</p>
+
+      {% if topic.data_points %}
+      <div class="data-points">
+        {% for dp in topic.data_points %}
+        <div class="data-point">
+          <div class="dp-label">{{ dp.label }}</div>
+          <div class="dp-value">{{ dp.value }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if topic.portfolio_impact %}
+      <div class="section-divider"></div>
+      <div class="card-title" style="font-size:10px;margin-bottom:8px;">持倉連動分析</div>
+      <div class="impact-list">
+        {% for impact in topic.portfolio_impact %}
+        <div class="impact-item">
+          <span class="impact-dot {{ impact.level }}"></span>
+          <span>{{ impact.text }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if topic.sources %}
+      <div class="topic-sources">
+        {% for src in topic.sources %}
+        <span class="topic-source">{{ src }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+
+</div>
+</body>
+</html>

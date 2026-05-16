@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>總經 AI 報告 — 2026 年 05 月 16 日</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2d3149;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --add: #22c55e;
+    --hold: #3b82f6;
+    --watch: #eab308;
+    --reduce: #f97316;
+    --cash: #ef4444;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --green: #22c55e;
+    --liquidity: #8b5cf6;
+    --fundamental: #0ea5e9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .container { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  /* Header */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 24px;
+  }
+  .header-meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+  .header-sources { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .source-badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Section */
+  .section { margin-bottom: 20px; }
+
+  /* Macro Theme Banner */
+  .theme-banner {
+    border-radius: 10px;
+    padding: 20px 22px;
+    border: 1px solid;
+    margin-bottom: 20px;
+  }
+  .theme-banner.liquidity {
+    background: linear-gradient(135deg, #1a1030 0%, #1f1535 100%);
+    border-color: #4c1d95;
+  }
+  .theme-banner.fundamental {
+    background: linear-gradient(135deg, #0c1a2e 0%, #0f2040 100%);
+    border-color: #075985;
+  }
+  .theme-type {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .theme-banner.liquidity .theme-type { color: var(--liquidity); }
+  .theme-banner.fundamental .theme-type { color: var(--fundamental); }
+  .theme-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+  .theme-desc { color: #b0bec5; font-size: 13px; margin-bottom: 14px; }
+  .confidence-row { display: flex; align-items: center; gap: 10px; }
+  .confidence-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .progress-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .theme-banner.liquidity .progress-fill { background: var(--liquidity); }
+  .theme-banner.fundamental .progress-fill { background: var(--fundamental); }
+  .confidence-val { font-size: 12px; font-weight: 600; min-width: 36px; text-align: right; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  /* Sentiment */
+  .sentiment-score-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .sentiment-num { font-size: 36px; font-weight: 800; line-height: 1; }
+  .sentiment-label { font-size: 16px; font-weight: 600; }
+  .sentiment-bar-wrap { margin-bottom: 10px; }
+  .sentiment-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(to right, #ef4444 0%, #f59e0b 30%, #eab308 50%, #84cc16 70%, #22c55e 100%);
+    position: relative;
+  }
+  .sentiment-cursor {
+    position: absolute;
+    top: -3px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.5);
+    transform: translateX(-50%);
+  }
+  .sentiment-reasoning { font-size: 13px; color: var(--muted); }
+
+  /* Risk tags */
+  .risk-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .risk-tag {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid;
+  }
+  .risk-tag.risk { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+  .risk-tag.warn { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.4); color: #fcd34d; }
+  .risk-tag.positive { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.4); color: #86efac; }
+
+  /* Collapsible details */
+  details { margin-bottom: 14px; }
+  details > summary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+    font-weight: 600;
+    font-size: 14px;
+    transition: background 0.15s;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary:hover { background: var(--surface2); }
+  details[open] > summary {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-color: transparent;
+  }
+  .summary-arrow { color: var(--muted); font-size: 12px; transition: transform 0.2s; }
+  details[open] .summary-arrow { transform: rotate(180deg); }
+  .details-body {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    padding: 0 18px 16px;
+  }
+
+  /* Tactical guidance */
+  .group-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding: 14px 0 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .guidance-row {
+    display: grid;
+    grid-template-columns: 90px 130px 90px 1fr;
+    gap: 8px;
+    align-items: start;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .guidance-row:last-child { border-bottom: none; }
+  .ticker-cell { font-weight: 700; font-family: monospace; font-size: 13px; }
+  .name-cell { color: var(--muted); font-size: 12px; padding-top: 1px; }
+  .action-cell { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+  .action-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  }
+  .action-dot.add    { background: var(--add); }
+  .action-dot.hold   { background: var(--hold); }
+  .action-dot.watch  { background: var(--watch); }
+  .action-dot.reduce { background: var(--reduce); }
+  .action-dot.cash   { background: var(--cash); }
+  .action-text.add    { color: var(--add); }
+  .action-text.hold   { color: var(--hold); }
+  .action-text.watch  { color: var(--watch); }
+  .action-text.reduce { color: var(--reduce); }
+  .action-text.cash   { color: var(--cash); }
+  .rationale-cell { font-size: 12px; color: #94a3b8; line-height: 1.5; }
+
+  /* Watchlist */
+  .watchlist-item {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: start;
+  }
+  .watchlist-item:last-child { border-bottom: none; }
+  .watch-event { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .watch-rationale { font-size: 12px; color: var(--muted); }
+  .watch-date {
+    font-size: 11px;
+    color: var(--amber);
+    background: rgba(245,158,11,0.1);
+    border: 1px solid rgba(245,158,11,0.25);
+    border-radius: 4px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  /* Topics */
+  .topic-header { display: flex; align-items: center; gap: 10px; }
+  .topic-icon { font-size: 20px; }
+  .topic-info { flex: 1; }
+  .topic-category { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .topic-name { font-weight: 700; font-size: 14px; }
+  .severity-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 4px;
+    border: 1px solid;
+  }
+  .severity-badge.high {
+    background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.4); color: #fca5a5;
+  }
+  .severity-badge.medium {
+    background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.4); color: #fcd34d;
+  }
+  .severity-badge.positive {
+    background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.4); color: #86efac;
+  }
+  .topic-summary {
+    font-size: 13px;
+    color: #94a3b8;
+    margin: 12px 0;
+    line-height: 1.6;
+  }
+
+  /* Data points */
+  .data-points {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .data-point {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    min-width: 110px;
+  }
+  .dp-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .dp-value { font-size: 14px; font-weight: 700; font-family: monospace; }
+
+  /* Portfolio impact */
+  .impact-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .impact-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+  .impact-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+  }
+  .impact-dot.red   { background: var(--red); }
+  .impact-dot.amber { background: var(--amber); }
+  .impact-dot.green { background: var(--green); }
+
+  /* Topic sources */
+  .topic-sources { display: flex; gap: 6px; flex-wrap: wrap; }
+  .topic-source {
+    font-size: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 6px;
+    color: var(--muted);
+  }
+  .section-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 0 12px;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  @media (max-width: 600px) {
+    .guidance-row {
+      grid-template-columns: 70px 1fr;
+      grid-template-rows: auto auto;
+    }
+    .name-cell { grid-column: 2; }
+    .action-cell { grid-column: 1; }
+    .rationale-cell { grid-column: 2; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-meta">自動生成報告</div>
+    <h1>📊 每日總經 AI 監控報告</h1>
+    <div class="header-meta" style="margin-top:6px">2026 年 05 月 16 日 · 台灣時間 07:00</div>
+    <div class="header-sources">
+      <span class="source-badge">Finnhub</span>
+      <span class="source-badge">Financial Modeling Prep</span>
+      <span class="source-badge">Gemini 2.0 Flash</span>
+    </div>
+  </div>
+
+  <!-- Macro Theme Banner -->
+  
+  <div class="theme-banner fundamental">
+    <div class="theme-type">🧭 今日主線 · 基本面主導</div>
+    <div class="theme-title">美伊衝突升級推升油價與通膨預期，市場定價轉向基本面風險。</div>
+    <div class="theme-desc">美國與伊朗緊張關係加劇，導致油價飆升，市場對通膨前景擔憂加劇，殖利率應聲上揚，基本面風險成為主導市場定價的核心邏輯。</div>
+    <div class="confidence-row">
+      <span class="confidence-label">主線信心度</span>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 90%"></div>
+      </div>
+      <span class="confidence-val">90%</span>
+    </div>
+  </div>
+
+  <!-- Sentiment -->
+  <div class="card">
+    <div class="card-title">市場風險情緒</div>
+    <div class="sentiment-score-row">
+      <span class="sentiment-num">3</span>
+      <span style="color:var(--muted);font-size:16px">/10</span>
+      <span class="sentiment-label">謹慎偏恐慌</span>
+    </div>
+    <div class="sentiment-bar-wrap">
+      <div class="sentiment-bar">
+        <div class="sentiment-cursor" style="left: 22%"></div>
+      </div>
+    </div>
+    <div class="sentiment-reasoning">地緣政治緊張推升通膨預期，殖利率飆升，市場對經濟前景擔憂加劇，風險規避情緒濃厚。</div>
+  </div>
+
+  <!-- Risk Tags -->
+  <div class="card">
+    <div class="card-title">風險標籤</div>
+    <div class="risk-tags">
+      
+      <span class="risk-tag risk">地緣政治風險</span>
+      
+      <span class="risk-tag risk">通膨壓力</span>
+      
+      <span class="risk-tag risk">利率上行</span>
+      
+      <span class="risk-tag risk">能源價格波動</span>
+      
+      <span class="risk-tag positive">AI產業熱潮</span>
+      
+    </div>
+  </div>
+
+  <!-- Tactical Guidance -->
+  <details open>
+    <summary>
+      <span>🎯 戰術配置指引（13 個持倉）</span>
+      <span class="summary-arrow">▼</span>
+    </summary>
+    <div class="details-body">
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:var(--add)"></span>加碼</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--hold)"></span>維持</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--watch)"></span>觀察</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--reduce)"></span>謹慎</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--cash)"></span>減碼/現金</span>
+      </div>
+
+      
+      
+        
+        
+        <div class="group-label">核心股票</div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">0050</div>
+          <div class="name-cell">元大台灣50</div>
+          <div class="action-cell">
+            <span class="action-dot watch"></span>
+            <span class="action-text watch">謹慎</span>
+          </div>
+          <div class="rationale-cell">地緣政治風險與通膨壓力上升，對台灣股市構成壓力，建議對0050維持謹慎。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">VOO</div>
+          <div class="name-cell">Vanguard標普500指數ETF</div>
+          <div class="action-cell">
+            <span class="action-dot watch"></span>
+            <span class="action-text watch">謹慎</span>
+          </div>
+          <div class="rationale-cell">美伊衝突推升油價與殖利率，對VOO代表的美國大盤帶來下行壓力，建議謹慎。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">QQQ</div>
+          <div class="name-cell">Invesco納斯達克100指數ETF</div>
+          <div class="action-cell">
+            <span class="action-dot watch"></span>
+            <span class="action-text watch">謹慎</span>
+          </div>
+          <div class="rationale-cell">殖利率飆升對科技成長股估值不利，美伊衝突加劇市場避險情緒，建議對QQQ謹慎。</div>
+        </div>
+        
+        
+      
+        
+        
+        <div class="group-label">品質防禦</div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">QUAL</div>
+          <div class="name-cell">iShares MSCI USA Quality Factor ETF</div>
+          <div class="action-cell">
+            <span class="action-dot hold"></span>
+            <span class="action-text hold">維持</span>
+          </div>
+          <div class="rationale-cell">在通膨與地緣政治風險升溫下，品質股相對具韌性，QUAL可維持觀察。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">XLV</div>
+          <div class="name-cell">Health Care Select Sector SPDR Fund</div>
+          <div class="action-cell">
+            <span class="action-dot hold"></span>
+            <span class="action-text hold">維持</span>
+          </div>
+          <div class="rationale-cell">醫療保健具防禦性，但高殖利率可能影響其估值，XLV可維持觀察。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">XLU</div>
+          <div class="name-cell">Utilities Select Sector SPDR Fund</div>
+          <div class="action-cell">
+            <span class="action-dot hold"></span>
+            <span class="action-text hold">維持</span>
+          </div>
+          <div class="rationale-cell">公用事業具防禦性，但對利率敏感，在殖利率飆升下XLU應維持觀察。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">XLP</div>
+          <div class="name-cell">Consumer Staples Select Sector SPDR Fund</div>
+          <div class="action-cell">
+            <span class="action-dot hold"></span>
+            <span class="action-text hold">維持</span>
+          </div>
+          <div class="rationale-cell">消費必需品具防禦性，在通膨壓力下XLP表現可能相對穩定，維持觀察。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">00713</div>
+          <div class="name-cell">元大高股息低波動</div>
+          <div class="action-cell">
+            <span class="action-dot hold"></span>
+            <span class="action-text hold">維持</span>
+          </div>
+          <div class="rationale-cell">高股息策略在市場波動時提供支撐，但整體市場壓力下00713仍需謹慎。</div>
+        </div>
+        
+        
+      
+        
+        
+        <div class="group-label">固定收益</div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">00679B</div>
+          <div class="name-cell">元大美債20年</div>
+          <div class="action-cell">
+            <span class="action-dot reduce"></span>
+            <span class="action-text reduce">減碼</span>
+          </div>
+          <div class="rationale-cell">殖利率飆升至一年新高，債券價格承壓，建議對00679B減碼以規避利率風險。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">00719B</div>
+          <div class="name-cell">元大美債7-10年</div>
+          <div class="action-cell">
+            <span class="action-dot reduce"></span>
+            <span class="action-text reduce">減碼</span>
+          </div>
+          <div class="rationale-cell">通膨擔憂導致殖利率大幅上揚，對00719B等長天期債券構成顯著負面影響，建議減碼。</div>
+        </div>
+        
+        
+      
+        
+        
+        <div class="group-label">實物資產</div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">黃金(GLD)</div>
+          <div class="name-cell">SPDR黃金ETF</div>
+          <div class="action-cell">
+            <span class="action-dot add"></span>
+            <span class="action-text add">加碼</span>
+          </div>
+          <div class="rationale-cell">美伊衝突升級與通膨擔憂推升避險需求，黃金(GLD)具保值功能，建議加碼。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">PDBC</div>
+          <div class="name-cell">Invesco DB多重商品指數ETF</div>
+          <div class="action-cell">
+            <span class="action-dot add"></span>
+            <span class="action-text add">加碼</span>
+          </div>
+          <div class="rationale-cell">美伊衝突導致油價飆升，PDBC作為商品ETF將直接受益於能源價格上漲，建議加碼。</div>
+        </div>
+        
+        <div class="guidance-row">
+          <div class="ticker-cell">現金</div>
+          <div class="name-cell">現金</div>
+          <div class="action-cell">
+            <span class="action-dot add"></span>
+            <span class="action-text add">加碼</span>
+          </div>
+          <div class="rationale-cell">地緣政治風險與通膨壓力升高，市場不確定性大增，增加現金部位以應對波動。</div>
+        </div>
+        
+        
+      
+    </div>
+  </details>
+
+  <!-- Watchlist -->
+  <details>
+    <summary>
+      <span>👀 未來 3–5 日防禦觀察清單</span>
+      <span class="summary-arrow">▼</span>
+    </summary>
+    <div class="details-body">
+      
+      <div class="watchlist-item">
+        <div>
+          <div class="watch-event">美伊衝突進一步升級</div>
+          <div class="watch-rationale">若衝突加劇，油價將續漲，黃金(GLD)避險需求增，0050、VOO、QQQ等股市承壓。</div>
+        </div>
+        <div class="watch-date">持續監控</div>
+      </div>
+      
+      <div class="watchlist-item">
+        <div>
+          <div class="watch-event">美國最新通膨數據（CPI/PCE）</div>
+          <div class="watch-rationale">影響聯準會利率決策預期，若超預期將推升殖利率，對00679B、00719B不利。</div>
+        </div>
+        <div class="watch-date">下次公布日期</div>
+      </div>
+      
+      <div class="watchlist-item">
+        <div>
+          <div class="watch-event">聯準會官員關於通膨與利率的發言</div>
+          <div class="watch-rationale">影響市場對未來利率路徑的預期，直接影響00679B、00719B及成長股QQQ。</div>
+        </div>
+        <div class="watch-date">持續監控</div>
+      </div>
+      
+      <div class="watchlist-item">
+        <div>
+          <div class="watch-event">AI晶片產業競爭格局變化</div>
+          <div class="watch-rationale">Cerebras IPO顯示AI需求旺盛，若有新技術突破或競爭加劇，將影響QQQ表現。</div>
+        </div>
+        <div class="watch-date">持續監控</div>
+      </div>
+      
+    </div>
+  </details>
+
+  <!-- Topics -->
+  <div class="card-title" style="margin: 20px 0 10px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--muted);">三大核心主題</div>
+
+  
+  <details>
+    <summary>
+      <span class="topic-header">
+        <span class="topic-icon">⚔️</span>
+        <span class="topic-info">
+          <div class="topic-category">地緣政治・能源市場</div>
+          <div class="topic-name">美伊衝突加劇，中東局勢緊張</div>
+        </span>
+        <span class="severity-badge high">
+          高風險
+        </span>
+      </span>
+      <span class="summary-arrow" style="margin-left:10px">▼</span>
+    </summary>
+    <div class="details-body">
+      <p class="topic-summary">美國指控伊拉克人協助伊朗民兵策劃襲擊，並扣押伊朗船隻，導致美伊關係高度緊張。BRICS會議未能就伊朗戰爭發表聯合聲明，顯示國際分歧，油價因此飆升。</p>
+
+      
+      <div class="data-points">
+        
+        <div class="data-point">
+          <div class="dp-label">油價漲幅</div>
+          <div class="dp-value">&gt;3% ↑</div>
+        </div>
+        
+      </div>
+      
+
+      
+      <div class="section-divider"></div>
+      <div class="card-title" style="font-size:10px;margin-bottom:8px;">持倉連動分析</div>
+      <div class="impact-list">
+        
+        <div class="impact-item">
+          <span class="impact-dot red"></span>
+          <span>美伊衝突推升油價，對PDBC為利多，黃金(GLD)避險需求增。但對0050、VOO、QQQ等股市構成下行壓力。</span>
+        </div>
+        
+        <div class="impact-item">
+          <span class="impact-dot amber"></span>
+          <span>中東緊張局勢可能影響全球供應鏈，增加企業營運成本，對品質防禦股如QUAL、XLV、XLU、XLP、00713帶來不確定性。</span>
+        </div>
+        
+      </div>
+      
+
+      
+      <div class="topic-sources">
+        
+        <span class="topic-source">Finnhub</span>
+        
+        <span class="topic-source">Reuters</span>
+        
+      </div>
+      
+    </div>
+  </details>
+  
+  <details>
+    <summary>
+      <span class="topic-header">
+        <span class="topic-icon">📈</span>
+        <span class="topic-info">
+          <div class="topic-category">貨幣政策・利率前景</div>
+          <div class="topic-name">油價與通膨數據引發市場擔憂，殖利率創一年新高</div>
+        </span>
+        <span class="severity-badge high">
+          高風險
+        </span>
+      </span>
+      <span class="summary-arrow" style="margin-left:10px">▼</span>
+    </summary>
+    <div class="details-body">
+      <p class="topic-summary">受美伊衝突推升油價影響，市場對通膨前景的擔憂加劇。最新通膨數據與油價共同作用，導致美國公債殖利率飆升至一年來高點，抹去股市週漲幅。</p>
+
+      
+      <div class="data-points">
+        
+        <div class="data-point">
+          <div class="dp-label">美國公債殖利率</div>
+          <div class="dp-value">一年新高 ↑</div>
+        </div>
+        
+        <div class="data-point">
+          <div class="dp-label">油價漲幅</div>
+          <div class="dp-value">&gt;3% ↑</div>
+        </div>
+        
+      </div>
+      
+
+      
+      <div class="section-divider"></div>
+      <div class="card-title" style="font-size:10px;margin-bottom:8px;">持倉連動分析</div>
+      <div class="impact-list">
+        
+        <div class="impact-item">
+          <span class="impact-dot red"></span>
+          <span>殖利率飆升對00679B、00719B等固定收益資產造成顯著負面影響，同時壓抑QQQ等成長股估值。</span>
+        </div>
+        
+        <div class="impact-item">
+          <span class="impact-dot amber"></span>
+          <span>通膨壓力可能侵蝕企業利潤，對0050、VOO等廣泛市場指數構成壓力，品質防禦股相對抗跌但仍受影響。</span>
+        </div>
+        
+      </div>
+      
+
+      
+      <div class="topic-sources">
+        
+        <span class="topic-source">Finnhub</span>
+        
+        <span class="topic-source">Reuters</span>
+        
+        <span class="topic-source">investingLive</span>
+        
+      </div>
+      
+    </div>
+  </details>
+  
+  <details>
+    <summary>
+      <span class="topic-header">
+        <span class="topic-icon">🤖</span>
+        <span class="topic-info">
+          <div class="topic-category">產業趨勢・科技創新</div>
+          <div class="topic-name">AI晶片需求強勁，新競爭者Cerebras IPO表現亮眼</div>
+        </span>
+        <span class="severity-badge positive">
+          正面
+        </span>
+      </span>
+      <span class="summary-arrow" style="margin-left:10px">▼</span>
+    </summary>
+    <div class="details-body">
+      <p class="topic-summary">Nvidia競爭對手Cerebras在華爾街首次公開募股表現出色，顯示市場對AI晶片的需求依然強勁。儘管整體市場受地緣政治影響，AI領域的創新與投資熱度不減。</p>
+
+      
+      <div class="data-points">
+        
+        <div class="data-point">
+          <div class="dp-label">Cerebras IPO表現</div>
+          <div class="dp-value">亮眼 ↑</div>
+        </div>
+        
+      </div>
+      
+
+      
+      <div class="section-divider"></div>
+      <div class="card-title" style="font-size:10px;margin-bottom:8px;">持倉連動分析</div>
+      <div class="impact-list">
+        
+        <div class="impact-item">
+          <span class="impact-dot green"></span>
+          <span>AI晶片市場的強勁需求對QQQ中的科技巨頭構成長期利好，儘管短期受利率影響，但基本面支撐仍在。</span>
+        </div>
+        
+        <div class="impact-item">
+          <span class="impact-dot amber"></span>
+          <span>AI產業的發展可能帶動相關供應鏈，對台灣科技股0050中的成分股有潛在正面影響。</span>
+        </div>
+        
+      </div>
+      
+
+      
+      <div class="topic-sources">
+        
+        <span class="topic-source">Finnhub</span>
+        
+      </div>
+      
+    </div>
+  </details>
+  
+
+</div>
+</body>
+</html>
