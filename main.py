@@ -12,6 +12,7 @@ from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage
 )
 from dotenv import load_dotenv
+import dcc_garch
 
 load_dotenv()
 
@@ -160,14 +161,15 @@ JSON 結構如下：
 USER_PROMPT_TEMPLATE = """
 以下是今日（台灣時間 {date}）過去 24 小時的總經與政經新聞：
 
-{news_text}
+{dcc_context}{news_text}
 
 請依照規定格式輸出 JSON 分析報告。
 """
 
-def analyze_with_gemini(news_text: str, date: str) -> dict:
+def analyze_with_gemini(news_text: str, date: str, dcc_context: str = "") -> dict:
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    user_prompt = USER_PROMPT_TEMPLATE.format(date=date, news_text=news_text)
+    dcc_block = f"{dcc_context}\n\n" if dcc_context else ""
+    user_prompt = USER_PROMPT_TEMPLATE.format(date=date, dcc_context=dcc_block, news_text=news_text)
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=user_prompt,
@@ -241,6 +243,15 @@ def send_error_notification(step: str, error: Exception) -> None:
 
 def main() -> None:
     try:
+        # Step 0: DCC-GARCH 量化分析（失敗時靜默降級，不中止主流程）
+        dcc_context = ""
+        try:
+            dcc_result = dcc_garch.run_dcc_analysis()
+            dcc_context = dcc_garch.format_dcc_for_prompt(dcc_result)
+            logger.info("DCC-GARCH analysis complete (α=%.4f β=%.4f)", dcc_result["dcc_alpha"], dcc_result["dcc_beta"])
+        except Exception as e:
+            logger.warning("DCC-GARCH skipped: %s", e)
+
         # Step 1: fetch news
         try:
             finnhub_news = fetch_finnhub_news()
@@ -266,7 +277,7 @@ def main() -> None:
         tw_time = datetime.now(timezone(timedelta(hours=8)))
         date_str = tw_time.strftime("%Y 年 %m 月 %d 日")
         try:
-            report_data = analyze_with_gemini(news_text, date_str)
+            report_data = analyze_with_gemini(news_text, date_str, dcc_context)
             logger.info("Gemini analysis complete")
         except Exception as e:
             send_error_notification("Gemini 分析", e)
