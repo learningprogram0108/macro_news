@@ -1,5 +1,4 @@
 google-genai>=1.0.0
-finnhub-python>=2.4.0
 requests>=2.31.0
 line-bot-sdk>=3.5.0
 python-dotenv>=1.0.0
