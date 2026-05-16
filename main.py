@@ -259,14 +259,14 @@ def _dcc_trend(current: float, avg30: float, pair: str) -> str:
 def _format_dcc_section(d: dict) -> str:
     c, c30 = d["corr"], d["corr_30d_avg"]
     v = d["vol_annual"]
-    ms, rp = d["max_sharpe"], d["risk_parity"]
+    hrp, rp = d["hrp"], d["risk_parity"]
     lines = [
         "📐 量化配置分析",
         f"• VOO↔TLT：{c['VOO_TLT']:+.2f} {_dcc_trend(c['VOO_TLT'], c30['VOO_TLT'], 'VOO_TLT')}",
         f"• VOO↔GLD：{c['VOO_GLD']:+.2f} {_dcc_trend(c['VOO_GLD'], c30['VOO_GLD'], 'VOO_GLD')}",
         f"• GLD↔TLT：{c['TLT_GLD']:+.2f} {_dcc_trend(c['TLT_GLD'], c30['TLT_GLD'], 'TLT_GLD')}",
         f"• 波動率：VOO {v['VOO']:.1%} | TLT {v['TLT']:.1%} | GLD {v['GLD']:.1%}",
-        f"• Max Sharpe：VOO {ms['VOO']:.0%} / TLT {ms['TLT']:.0%} / GLD {ms['GLD']:.0%}",
+        f"• HRP：VOO {hrp['VOO']:.0%} / TLT {hrp['TLT']:.0%} / GLD {hrp['GLD']:.0%}",
         f"• Risk Parity：VOO {rp['VOO']:.0%} / TLT {rp['TLT']:.0%} / GLD {rp['GLD']:.0%}",
     ]
     return "\n".join(lines)

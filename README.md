@@ -16,8 +16,8 @@ GitHub Actions workflow_dispatch
         │       ├─ yfinance 抓取 VOO / TLT / GLD 兩年日線
         │       ├─ GARCH(1,1) 估計各資產條件波動率
         │       ├─ DCC(1,1) 估計動態條件相關矩陣
-        │       ├─ Max Sharpe 最佳化配置
-        │       └─ Risk Parity 最佳化配置
+        │       ├─ HRP 階層風險平價配置（Lopez de Prado 2016）
+        │       └─ Risk Parity 等風險貢獻配置
         │
         ├─► Finnhub API       → 市場新聞（general + forex）
         ├─► FMP API           → 國際政經新聞（付費帳號可用）
@@ -64,7 +64,7 @@ Gemini 2.5 Flash API
 
 - **動態條件相關係數**：VOO↔TLT、VOO↔GLD、TLT↔GLD 的即時相關性（vs 近 30 日均值），判斷避險關係是否生效
 - **條件波動率（年化）**：各資產當前的 GARCH(1,1) 條件標準差
-- **Max Sharpe 配置**：基於動態共變異數矩陣的最大夏普比率最佳化
+- **HRP 配置**：Hierarchical Risk Parity（Lopez de Prado 2016）— 以階層聚類建立資產樹狀結構，遞迴二分分配風險，不需矩陣求逆、對估計誤差更穩健
 - **Risk Parity 配置**：三資產等風險貢獻配置（橋水 All Weather 概念）
 
 量化結果直接注入 Gemini prompt，讓 AI 的操作建議有具體百分比數字支撐。
@@ -209,8 +209,8 @@ DCC-GARCH 量化結果（注入 Gemini prompt 範例）：
 • VOO：15.3%　TLT：12.1%　GLD：13.8%
 
 ▌最佳化配置建議
-最大夏普（Max Sharpe，預期 Sharpe 0.72）：
-  VOO 62.4% / TLT 21.3% / GLD 16.3%
-風險平價（Risk Parity）：
+階層風險平價（HRP）：
+  VOO 45.2% / TLT 28.6% / GLD 26.2%
+等風險貢獻（Risk Parity）：
   VOO 33.8% / TLT 34.2% / GLD 32.0%
 ```
